@@ -1,0 +1,57 @@
+PHONY := __build
+## 第一个目标
+__build:
+
+## 一开始，将下面这些变量设置为空, 即清零
+obj-y :=
+subdir-y :=
+EXTRA_CFLAGS :=
+
+## 包含Makefile, 这个Makefile对于顶层目录来说包含 obj-y := main.o sub.o a/
+##                           对于子目录a/来说包含 obj-y := sub2.o sub3.o
+include Makefile
+
+## 仅对于子目录
+## obj-y := mian.o sub.o c/
+## $(filter %/, $(obj-y))   : c/ 
+## __subdir-y  : c 
+## subdir-y    : c 
+__subdir-y	:= $(patsubst %/,%,$(filter %/, $(obj-y)))
+subdir-y	+= $(__subdir-y)
+
+## 子目录
+## c/built-in.o 
+subdir_objs := $(foreach f,$(subdir-y),$(f)/built-in.o)
+
+## 顶层目录是：main.o sub.o
+## 子目录是：sub2.o sub3.o
+cur_objs := $(filter-out %/, $(obj-y))
+
+## 依赖文件
+dep_files := $(foreach f,$(cur_objs),.$(f).d)
+dep_files := $(wildcard $(dep_files))
+
+## 包含依赖文件
+ifneq ($(dep_files),)
+  include $(dep_files)
+endif
+
+
+PHONY += $(subdir-y)
+
+## __build依赖于子目录c 和 built-in.o
+__build : $(subdir-y) built-in.o
+
+## 去处理子目录：进入子目录，使用顶层目录的Makefile.build来处理子目录
+$(subdir-y):
+	make -C $@ -f $(TOPDIR)/Makefile.build
+
+built-in.o : $(cur_objs) $(subdir_objs)
+	$(LD) -r -o $@ $^
+
+dep_file = .$@.d
+
+%.o : %.c
+	$(CC) $(CFLAGS) $(EXTRA_CFLAGS) $(CFLAGS_$@) -Wp,-MD,$(dep_file) -c -o $@ $<
+	
+.PHONY : $(PHONY)
